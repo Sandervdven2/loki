@@ -60,6 +60,34 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_pega",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "eu-center-2",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "pegaploggingg",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "logs/2023/12/05/12/pe-prod-ROOT-PEGACLOUD-CR44859-eu-central-xXjRtMibLO5s-1-2023-12-05-12-28-22-f2eb7d31-67c5-482a-b88f-8cbc148d75e7",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"bucket_region": "eu-center-2",
+				"bucket_owner":  "test",
+				"bucket":        "pegaplogging",
+				"type":          PEGA_LOG_TYPE,
+				"key":           "logs/2023/12/05/12/pe-prod-ROOT-PEGACLOUD-CR44859-eu-central-xXjRtMibLO5s-1-2023-12-05-12-28-22-f2eb7d31-67c5-482a-b88f-8cbc148d75e7",
+				//"year": "2022",
+			},
+			wantErr: false,
+		},
+		{
 			name: "s3_nlb",
 			args: args{
 				record: events.S3EventRecord{
