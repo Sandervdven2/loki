@@ -161,6 +161,49 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		}
 		return fmt.Errorf("could not find parser for type %s", labels["type"])
 	}
+
+	scanner := bufio.NewScanner(obj)
+
+	ls := model.LabelSet{
+		model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
+		model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
+		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
+	}
+
+	ls = applyLabels(ls)
+
+	var lineCount int
+	for scanner.Scan() {
+		log_line := scanner.Text()
+		lineCount++
+		if lineCount <= parser.skipHeaderCount {
+			continue
+		}
+		if printLogLine {
+			fmt.Println(log_line)
+		}
+
+		timestamp := time.Now()
+
+		if err := b.add(ctx, entry{ls, logproto.Entry{
+			Line:      log_line,
+			Timestamp: timestamp,
+		}}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func parseS3LogZipped(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
+	parser, ok := parsers[labels["type"]]
+	if !ok {
+		if labels["type"] == CLOUDTRAIL_DIGEST_LOG_TYPE {
+			return nil
+		}
+		return fmt.Errorf("could not find parser for type %s", labels["type"])
+	}
 	gzreader, err := gzip.NewReader(obj)
 	if err != nil {
 		return err
