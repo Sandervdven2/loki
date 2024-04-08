@@ -31,6 +31,8 @@ type parserConfig struct {
 	filenameRegex *regexp.Regexp
 	// regex that extracts the timestamp from the log sample
 	timestampRegex *regexp.Regexp
+	// regex that extracts the timestamp from the log sample
+	typeRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
 	// if the timestamp is a string that can be parsed or a Unix timestamp
@@ -85,7 +87,10 @@ var (
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
 	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
 	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
-	parsers                  = map[string]parserConfig{
+	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
+	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"`)
+
+	parsers = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
 			logTypeLabel:    "s3_vpc_flow",
 			filenameRegex:   defaultFilenameRegex,
@@ -126,13 +131,12 @@ var (
 			timestampType:  "unix",
 		},
 		PEGA_LOG_TYPE: {
-			logTypeLabel:    "s3_pega",
-			filenameRegex:   pegaFilenameRegex,
-			ownerLabelKey:   "prefix",
-			timestampRegex:  cloudfrontTimestampRegex,
-			timestampFormat: "2006-01-02\x0915:04:05",
-			timestampType:   "string",
-			skipHeaderCount: 2,
+			logTypeLabel:   "s3_pega",
+			filenameRegex:  pegaFilenameRegex,
+			ownerLabelKey:  "prefix",
+			timestampRegex: pegaTimestampRegex,
+			timestampType:  "unix",
+			typeRegex:      pegaLogstreamTypeRegex,
 		},
 	}
 )
@@ -164,14 +168,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 
 	scanner := bufio.NewScanner(obj)
 
-	ls := model.LabelSet{
-		model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
-		model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
-		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
-	}
-
-	ls = applyLabels(ls)
-
 	var lineCount int
 	for scanner.Scan() {
 		log_line := scanner.Text()
@@ -183,7 +179,44 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			fmt.Println(log_line)
 		}
 
+		var logStream string = "undefined"
+
+		typeMatch := parser.typeRegex.FindStringSubmatch(log_line)
+		if len(typeMatch) > 0 {
+			logStream = typeMatch[1]
+		}
+		level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s, using default", logStream))
+
+		ls := model.LabelSet{
+			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
+			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
+			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
+			model.LabelName("logStream"):                                        model.LabelValue(logStream),
+		}
+
+		ls = applyLabels(ls)
+		// lslogStream := model.LabelSet{
+		// 	model.LabelName("logStream"): model.LabelValue(logStream),
+		// }
+		// ls.Merge(lslogStream)
+
 		timestamp := time.Now()
+		match := parser.timestampRegex.FindStringSubmatch(log_line)
+		if len(match) > 0 {
+			switch parser.timestampType {
+
+			case "unix":
+				sec, nsec, err := getUnixSecNsec(match[1])
+				if err != nil {
+					return err
+				}
+				timestamp = time.Unix(sec, nsec).UTC()
+			default:
+				level.Warn(*log).Log("msg", fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
+			}
+		} else {
+			level.Warn(*log).Log("msg", fmt.Sprintf("could not parse logfile with time regex of %s, using current time", labels["type"]))
+		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
 			Line:      log_line,
