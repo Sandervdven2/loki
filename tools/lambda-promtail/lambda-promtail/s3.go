@@ -31,7 +31,7 @@ type parserConfig struct {
 	filenameRegex *regexp.Regexp
 	// regex that extracts the timestamp from the log sample
 	timestampRegex *regexp.Regexp
-	// regex that extracts the timestamp from the log sample
+	// regex that extracts the type of logline from the log sample
 	typeRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
@@ -157,7 +157,7 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	return s3Client, nil
 }
 
-func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
+func parseS3LogNotZipped(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
 	parser, ok := parsers[labels["type"]]
 	if !ok {
 		if labels["type"] == CLOUDTRAIL_DIGEST_LOG_TYPE {
@@ -229,7 +229,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	return nil
 }
 
-func parseS3LogZipped(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
+func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
 	parser, ok := parsers[labels["type"]]
 	if !ok {
 		if labels["type"] == CLOUDTRAIL_DIGEST_LOG_TYPE {
@@ -243,14 +243,6 @@ func parseS3LogZipped(ctx context.Context, b *batch, labels map[string]string, o
 	}
 
 	scanner := bufio.NewScanner(gzreader)
-
-	ls := model.LabelSet{
-		model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
-		model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
-		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
-	}
-
-	ls = applyLabels(ls)
 
 	// extract the timestamp of the nested event and sends the rest as raw json
 	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
@@ -283,6 +275,23 @@ func parseS3LogZipped(ctx context.Context, b *batch, labels map[string]string, o
 		if printLogLine {
 			fmt.Println(log_line)
 		}
+
+		var logStream string = "undefined"
+
+		typeMatch := parser.typeRegex.FindStringSubmatch(log_line)
+		if len(typeMatch) > 0 {
+			logStream = typeMatch[1]
+		}
+		level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s, using default", logStream))
+
+		ls := model.LabelSet{
+			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
+			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
+			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
+			model.LabelName("logStream"):                                        model.LabelValue(logStream),
+		}
+
+		ls = applyLabels(ls)
 
 		timestamp := time.Now()
 		match := parser.timestampRegex.FindStringSubmatch(log_line)
