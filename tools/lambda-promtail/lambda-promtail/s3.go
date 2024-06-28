@@ -244,27 +244,6 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 
 	scanner := bufio.NewScanner(gzreader)
 
-	// extract the timestamp of the nested event and sends the rest as raw json
-	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
-		records := make(chan Record)
-		jsonStream := NewJSONStream(records)
-		go jsonStream.Start(gzreader, parser.skipHeaderCount)
-		// Stream json file
-		for record := range jsonStream.records {
-			if record.Error != nil {
-				return record.Error
-			}
-			trailEntry, err := parseCloudtrailRecord(record)
-			if err != nil {
-				return err
-			}
-			if err := b.add(ctx, entry{ls, trailEntry}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
 	var lineCount int
 	for scanner.Scan() {
 		log_line := scanner.Text()
