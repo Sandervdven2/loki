@@ -260,8 +260,8 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		typeMatch := parser.typeRegex.FindStringSubmatch(log_line)
 		if len(typeMatch) > 0 {
 			logStream = typeMatch[1]
+			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
-		level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s, using default", logStream))
 
 		ls := model.LabelSet{
 			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
