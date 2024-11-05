@@ -48,7 +48,7 @@ Reasons:
   * The Agent Operator is deprecated.
   * The dependency on the Prometheus operator is not one we are able to support well.
 
-The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) is an improvement over the the previous approach because it allows for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or letting you install a monitoring-only local installation of Loki, Mimir, Tempo, and Grafana.
+The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) is an improvement over the previous approach because it allows for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or letting you install a monitoring-only local installation of Loki, Mimir, Tempo, and Grafana.
 
 The monitoring sections of this chart still exist but are disabled by default.
 
@@ -86,4 +86,4 @@ With these caches disabled, Loki will return to defaults which enables an in-mem
 
 #### Distributed mode
 
-This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#microservices-mode). Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly.
+This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode). Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly.

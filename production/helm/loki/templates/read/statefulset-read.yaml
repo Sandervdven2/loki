@@ -20,7 +20,11 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.read.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
   replicas: {{ .Values.read.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
@@ -28,7 +32,7 @@ spec:
       partition: 0
   serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -176,6 +180,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .Values.read.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

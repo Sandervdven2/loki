@@ -53,6 +53,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -126,6 +127,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -315,6 +325,7 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
@@ -515,6 +526,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.dataVolumeParameters</td>
 			<td>object</td>
 			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
@@ -654,7 +674,7 @@ null
 		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td>Comma-separated list of Loki modules to load for the backend</td>
 			<td><pre lang="json">
 "backend"
 </pre>
@@ -688,9 +708,9 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor</td>
+			<td>bloomBuilder</td>
 			<td>object</td>
-			<td>Configuration for the bloom compactor</td>
+			<td>Configuration for the bloom-builder</td>
 			<td><pre lang="json">
 {
   "affinity": {
@@ -699,7 +719,7 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-compactor"
+              "app.kubernetes.io/component": "bloom-builder"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -709,6 +729,19 @@ null
   },
   "appProtocol": {
     "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
   },
   "command": null,
   "extraArgs": [],
@@ -723,38 +756,14 @@ null
     "repository": null,
     "tag": null
   },
-  "initContainers": [],
-  "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
-  "persistence": {
-    "annotations": {},
-    "claims": [
-      {
-        "name": "data",
-        "size": "10Gi",
-        "storageClass": null
-      }
-    ],
-    "enableStatefulSetAutoDeletePVC": false,
-    "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
-    "whenDeleted": "Retain",
-    "whenScaled": "Retain"
-  },
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
-  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
-  "serviceAccount": {
-    "annotations": {},
-    "automountServiceAccountToken": true,
-    "create": false,
-    "imagePullSecrets": [],
-    "name": null
-  },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -763,18 +772,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.affinity</td>
+			<td>bloomBuilder.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom compactor pods.</td>
+			<td>Affinity for bloom-builder pods.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.appProtocol</td>
+			<td>bloomBuilder.appProtocol</td>
 			<td>object</td>
-			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td>Adds the appProtocol field to the queryFrontend service. This allows bloomBuilder to work with istio protocol selection.</td>
 			<td><pre lang="json">
 {
   "grpc": ""
@@ -783,7 +792,97 @@ Hard node anti-affinity
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.command</td>
+			<td>bloomBuilder.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the bloom-builder</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the bloom-builder</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the bloom-builder</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the bloom-builder</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the bloom-builder</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.command</td>
 			<td>string</td>
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
@@ -792,61 +891,61 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraArgs</td>
+			<td>bloomBuilder.extraArgs</td>
 			<td>list</td>
-			<td>Additional CLI args for the bloom compactor</td>
+			<td>Additional CLI args for the bloom-builder</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraContainers</td>
+			<td>bloomBuilder.extraContainers</td>
 			<td>list</td>
-			<td>Containers to add to the bloom compactor pods</td>
+			<td>Containers to add to the bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraEnv</td>
+			<td>bloomBuilder.extraEnv</td>
 			<td>list</td>
-			<td>Environment variables to add to the bloom compactor pods</td>
+			<td>Environment variables to add to the bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraEnvFrom</td>
+			<td>bloomBuilder.extraEnvFrom</td>
 			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the bloom compactor pods</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraVolumeMounts</td>
+			<td>bloomBuilder.extraVolumeMounts</td>
 			<td>list</td>
-			<td>Volume mounts to add to the bloom compactor pods</td>
+			<td>Volume mounts to add to the bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.extraVolumes</td>
+			<td>bloomBuilder.extraVolumes</td>
 			<td>list</td>
-			<td>Volumes to add to the bloom compactor pods</td>
+			<td>Volumes to add to the bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.hostAliases</td>
+			<td>bloomBuilder.hostAliases</td>
 			<td>list</td>
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
@@ -855,225 +954,126 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.image.registry</td>
+			<td>bloomBuilder.image.registry</td>
 			<td>string</td>
-			<td>The Docker registry for the bloom compactor image. Overrides `loki.image.registry`</td>
+			<td>The Docker registry for the bloom-builder image. Overrides `loki.image.registry`</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.image.repository</td>
+			<td>bloomBuilder.image.repository</td>
 			<td>string</td>
-			<td>Docker image repository for the bloom compactor image. Overrides `loki.image.repository`</td>
+			<td>Docker image repository for the bloom-builder image. Overrides `loki.image.repository`</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.image.tag</td>
+			<td>bloomBuilder.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag for the bloom compactor image. Overrides `loki.image.tag`</td>
+			<td>Docker image tag for the bloom-builder image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.initContainers</td>
-			<td>list</td>
-			<td>Init containers to add to the bloom compactor pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.livenessProbe</td>
-			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for bloom compactor pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.annotations</td>
-			<td>object</td>
-			<td>Annotations for bloom compactor PVCs</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.claims</td>
-			<td>list</td>
-			<td>List of the bloom compactor PVCs</td>
-			<td><pre lang="list">
-
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.enableStatefulSetAutoDeletePVC</td>
-			<td>bool</td>
-			<td>Enable StatefulSetAutoDeletePVC feature</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.enabled</td>
-			<td>bool</td>
-			<td>Enable creating PVCs for the bloom compactor</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.size</td>
+			<td>bloomBuilder.maxUnavailable</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.podAnnotations</td>
+			<td>bloomBuilder.nodeSelector</td>
 			<td>object</td>
-			<td>Annotations for bloom compactor pods</td>
+			<td>Node selector for bloom-builder pods</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.podLabels</td>
+			<td>bloomBuilder.podAnnotations</td>
 			<td>object</td>
-			<td>Labels for bloom compactor pods</td>
+			<td>Annotations for bloom-builder pods</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.priorityClassName</td>
+			<td>bloomBuilder.podLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.priorityClassName</td>
 			<td>string</td>
-			<td>The name of the PriorityClass for bloom compactor pods</td>
+			<td>The name of the PriorityClass for bloom-builder pods</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.readinessProbe</td>
-			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.replicas</td>
+			<td>bloomBuilder.replicas</td>
 			<td>int</td>
-			<td>Number of replicas for the bloom compactor</td>
+			<td>Number of replicas for the bloom-builder</td>
 			<td><pre lang="json">
 0
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.resources</td>
+			<td>bloomBuilder.resources</td>
 			<td>object</td>
-			<td>Resource requests and limits for the bloom compactor</td>
+			<td>Resource requests and limits for the bloom-builder</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.serviceAccount.annotations</td>
+			<td>bloomBuilder.serviceAnnotations</td>
 			<td>object</td>
-			<td>Annotations for the bloom compactor service account</td>
+			<td>Annotations for bloom-builder service</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.serviceAccount.automountServiceAccountToken</td>
-			<td>bool</td>
-			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.serviceAccount.imagePullSecrets</td>
-			<td>list</td>
-			<td>Image pull secrets for the bloom compactor service account</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.serviceAccount.name</td>
-			<td>string</td>
-			<td>The name of the ServiceAccount to use for the bloom compactor. If not set and create is true, a name is generated by appending "-bloom-compactor" to the common ServiceAccount.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomCompactor.serviceLabels</td>
+			<td>bloomBuilder.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for bloom compactor service</td>
+			<td>Labels for bloom-builder service</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.terminationGracePeriodSeconds</td>
+			<td>bloomBuilder.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the bloom compactor to shutdown before it is killed</td>
+			<td>Grace period to allow the bloom-builder to shutdown before it is killed</td>
 			<td><pre lang="json">
 30
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomCompactor.tolerations</td>
+			<td>bloomBuilder.tolerations</td>
 			<td>list</td>
-			<td>Tolerations for bloom compactor pods</td>
+			<td>Tolerations for bloom-builder pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1082,7 +1082,7 @@ null
 		<tr>
 			<td>bloomGateway</td>
 			<td>object</td>
-			<td>Configuration for the bloom gateway</td>
+			<td>Configuration for the bloom-gateway</td>
 			<td><pre lang="json">
 {
   "affinity": {
@@ -1129,8 +1129,6 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1147,6 +1145,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1157,7 +1156,7 @@ null
 		<tr>
 			<td>bloomGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom gateway pods.</td>
+			<td>Affinity for bloom-gateway pods.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -1186,7 +1185,7 @@ null
 		<tr>
 			<td>bloomGateway.extraArgs</td>
 			<td>list</td>
-			<td>Additional CLI args for the bloom gateway</td>
+			<td>Additional CLI args for the bloom-gateway</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1195,7 +1194,7 @@ null
 		<tr>
 			<td>bloomGateway.extraContainers</td>
 			<td>list</td>
-			<td>Containers to add to the bloom gateway pods</td>
+			<td>Containers to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1204,7 +1203,7 @@ null
 		<tr>
 			<td>bloomGateway.extraEnv</td>
 			<td>list</td>
-			<td>Environment variables to add to the bloom gateway pods</td>
+			<td>Environment variables to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1213,7 +1212,7 @@ null
 		<tr>
 			<td>bloomGateway.extraEnvFrom</td>
 			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the bloom gateway pods</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1222,7 +1221,7 @@ null
 		<tr>
 			<td>bloomGateway.extraVolumeMounts</td>
 			<td>list</td>
-			<td>Volume mounts to add to the bloom gateway pods</td>
+			<td>Volume mounts to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1231,7 +1230,7 @@ null
 		<tr>
 			<td>bloomGateway.extraVolumes</td>
 			<td>list</td>
-			<td>Volumes to add to the bloom gateway pods</td>
+			<td>Volumes to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1249,7 +1248,7 @@ null
 		<tr>
 			<td>bloomGateway.image.registry</td>
 			<td>string</td>
-			<td>The Docker registry for the bloom gateway image. Overrides `loki.image.registry`</td>
+			<td>The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1258,7 +1257,7 @@ null
 		<tr>
 			<td>bloomGateway.image.repository</td>
 			<td>string</td>
-			<td>Docker image repository for the bloom gateway image. Overrides `loki.image.repository`</td>
+			<td>Docker image repository for the bloom-gateway image. Overrides `loki.image.repository`</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1267,7 +1266,7 @@ null
 		<tr>
 			<td>bloomGateway.image.tag</td>
 			<td>string</td>
-			<td>Docker image tag for the bloom gateway image. Overrides `loki.image.tag`</td>
+			<td>Docker image tag for the bloom-gateway image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1276,7 +1275,7 @@ null
 		<tr>
 			<td>bloomGateway.initContainers</td>
 			<td>list</td>
-			<td>Init containers to add to the bloom gateway pods</td>
+			<td>Init containers to add to the bloom-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1294,7 +1293,7 @@ null
 		<tr>
 			<td>bloomGateway.nodeSelector</td>
 			<td>object</td>
-			<td>Node selector for bloom gateway pods</td>
+			<td>Node selector for bloom-gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1303,7 +1302,7 @@ null
 		<tr>
 			<td>bloomGateway.persistence.annotations</td>
 			<td>object</td>
-			<td>Annotations for bloom gateway PVCs</td>
+			<td>Annotations for bloom-gateway PVCs</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1312,9 +1311,18 @@ null
 		<tr>
 			<td>bloomGateway.persistence.claims</td>
 			<td>list</td>
-			<td>List of the bloom gateway PVCs</td>
+			<td>List of the bloom-gateway PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
 </pre>
 </td>
 		</tr>
@@ -1330,34 +1338,16 @@ false
 		<tr>
 			<td>bloomGateway.persistence.enabled</td>
 			<td>bool</td>
-			<td>Enable creating PVCs for the bloom gateway</td>
+			<td>Enable creating PVCs for the bloom-gateway</td>
 			<td><pre lang="json">
 false
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>bloomGateway.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomGateway.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>bloomGateway.podAnnotations</td>
 			<td>object</td>
-			<td>Annotations for bloom gateway pods</td>
+			<td>Annotations for bloom-gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1366,7 +1356,7 @@ null
 		<tr>
 			<td>bloomGateway.podLabels</td>
 			<td>object</td>
-			<td>Labels for bloom gateway pods</td>
+			<td>Labels for bloom-gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1375,7 +1365,7 @@ null
 		<tr>
 			<td>bloomGateway.priorityClassName</td>
 			<td>string</td>
-			<td>The name of the PriorityClass for bloom gateway pods</td>
+			<td>The name of the PriorityClass for bloom-gateway pods</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1393,7 +1383,7 @@ null
 		<tr>
 			<td>bloomGateway.replicas</td>
 			<td>int</td>
-			<td>Number of replicas for the bloom gateway</td>
+			<td>Number of replicas for the bloom-gateway</td>
 			<td><pre lang="json">
 0
 </pre>
@@ -1402,7 +1392,7 @@ null
 		<tr>
 			<td>bloomGateway.resources</td>
 			<td>object</td>
-			<td>Resource requests and limits for the bloom gateway</td>
+			<td>Resource requests and limits for the bloom-gateway</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1411,7 +1401,7 @@ null
 		<tr>
 			<td>bloomGateway.serviceAccount.annotations</td>
 			<td>object</td>
-			<td>Annotations for the bloom gateway service account</td>
+			<td>Annotations for the bloom-gateway service account</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1429,7 +1419,7 @@ true
 		<tr>
 			<td>bloomGateway.serviceAccount.imagePullSecrets</td>
 			<td>list</td>
-			<td>Image pull secrets for the bloom gateway service account</td>
+			<td>Image pull secrets for the bloom-gateway service account</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1438,16 +1428,25 @@ true
 		<tr>
 			<td>bloomGateway.serviceAccount.name</td>
 			<td>string</td>
-			<td>The name of the ServiceAccount to use for the bloom gateway. If not set and create is true, a name is generated by appending "-bloom-gateway" to the common ServiceAccount.</td>
+			<td>The name of the ServiceAccount to use for the bloom-gateway. If not set and create is true, a name is generated by appending "-bloom-gateway" to the common ServiceAccount.</td>
 			<td><pre lang="json">
 null
 </pre>
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for bloom gateway service</td>
+			<td>Labels for bloom-gateway service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1456,7 +1455,7 @@ null
 		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the bloom gateway to shutdown before it is killed</td>
+			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
 			<td><pre lang="json">
 30
 </pre>
@@ -1465,7 +1464,398 @@ null
 		<tr>
 			<td>bloomGateway.tolerations</td>
 			<td>list</td>
-			<td>Tolerations for bloom gateway pods</td>
+			<td>Tolerations for bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner</td>
+			<td>object</td>
+			<td>Configuration for the bloom-planner</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "bloom-planner"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "livenessProbe": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAccount": {
+    "annotations": {},
+    "automountServiceAccountToken": true,
+    "create": false,
+    "imagePullSecrets": [],
+    "name": null
+  },
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.affinity</td>
+			<td>object</td>
+			<td>Affinity for bloom-planner pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the bloom-planner</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the bloom-planner image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the bloom-planner image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the bloom-planner image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the bloom-planner</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.podLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for bloom-planner pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the bloom-planner</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the bloom-planner</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.annotations</td>
+			<td>object</td>
+			<td>Annotations for the bloom-planner service account</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.automountServiceAccountToken</td>
+			<td>bool</td>
+			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.imagePullSecrets</td>
+			<td>list</td>
+			<td>Image pull secrets for the bloom-planner service account</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.name</td>
+			<td>string</td>
+			<td>The name of the ServiceAccount to use for the bloom-planner. If not set and create is true, a name is generated by appending "-bloom-planner" to the common ServiceAccount.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the bloom-planner to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for bloom-planner pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1612,6 +2002,56 @@ true
 			<td>Parallel threads for sending and receiving chunks from chunks cache</td>
 			<td><pre lang="json">
 5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
 </pre>
 </td>
 		</tr>
@@ -1852,6 +2292,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2150,6 +2591,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for compactor service</td>
@@ -2242,6 +2692,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2531,6 +2982,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for distributor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for distributor service</td>
@@ -2572,7 +3032,7 @@ null
   },
   "canarySecret": null,
   "cluster_name": null,
-  "config": "{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
+  "config": "{{- if .Values.enterprise.adminApi.enabled }}\nadmin_client:\n  {{ include \"enterprise-logs.adminAPIStorageConfig\" . | nindent 2 }}\n{{ end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
   "enabled": false,
   "externalConfigName": "",
   "externalLicenseName": null,
@@ -2589,6 +3049,7 @@ null
   },
   "provisioner": {
     "additionalTenants": [],
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -2601,6 +3062,7 @@ null
       "tag": null
     },
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": null,
     "provisionedSecretPrefix": null,
     "securityContext": {
@@ -2608,9 +3070,11 @@ null
       "runAsGroup": 10001,
       "runAsNonRoot": true,
       "runAsUser": 10001
-    }
+    },
+    "tolerations": []
   },
   "tokengen": {
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -2619,6 +3083,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": "",
     "securityContext": {
       "fsGroup": 10001,
@@ -2630,7 +3095,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "v1.8.6"
+  "version": "3.1.1"
 }
 </pre>
 </td>
@@ -2772,6 +3237,7 @@ null
 			<td><pre lang="json">
 {
   "additionalTenants": [],
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -2784,6 +3250,7 @@ null
     "tag": null
   },
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": null,
   "provisionedSecretPrefix": null,
   "securityContext": {
@@ -2791,7 +3258,8 @@ null
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  }
+  },
+  "tolerations": []
 }
 </pre>
 </td>
@@ -2802,6 +3270,15 @@ null
 			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2911,6 +3388,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for provisioner Job</td>
@@ -2943,11 +3429,21 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for tokengen Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen</td>
 			<td>object</td>
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -2956,6 +3452,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
@@ -2966,6 +3463,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3042,6 +3548,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.tokengen.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for tokengen Pods</td>
@@ -3111,6 +3626,7 @@ false
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -3187,6 +3703,15 @@ false
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the enterprise gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3455,9 +3980,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
-			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file. if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td><pre lang="">
+Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
 </pre>
 </td>
 		</tr>
@@ -3476,6 +4001,15 @@ null
 			<td>The basic auth username for the gateway</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.containerPort</td>
+			<td>int</td>
+			<td>Default container port</td>
+			<td><pre lang="json">
+8080
 </pre>
 </td>
 		</tr>
@@ -3618,7 +4152,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.24-alpine"
+"1.27-alpine"
 </pre>
 </td>
 		</tr>
@@ -3698,6 +4232,15 @@ false
 			<td>Lifecycle for the gateway container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4M"
 </pre>
 </td>
 		</tr>
@@ -4111,9 +4654,13 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
-  "tolerations": []
+  "tolerations": [],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  }
 }
 </pre>
 </td>
@@ -4364,6 +4911,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for index-gateway service</td>
@@ -4387,6 +4943,26 @@ null
 			<td>Tolerations for index-gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -4464,6 +5040,7 @@ null
   "readinessProbe": {},
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
@@ -4479,6 +5056,9 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  },
   "zoneAwareReplication": {
     "enabled": true,
     "maxUnavailablePct": 33,
@@ -4847,6 +5427,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for ingestor service</td>
@@ -4879,6 +5468,26 @@ false
 			<td>topologySpread for ingester pods.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the ingester StatefulSets.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -5086,29 +5695,38 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
-    "read": [
-      "/api/prom/tail",
-      "/loki/api/v1/tail",
-      "/loki/api",
-      "/api/prom/rules",
-      "/loki/api/v1/rules",
-      "/prometheus/api/v1/rules",
-      "/prometheus/api/v1/alerts"
-    ],
-    "singleBinary": [
+    "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
+      "/otlp/v1/logs"
+    ],
+    "queryFrontend": [
+      "/api/prom/query",
+      "/api/prom/label",
+      "/api/prom/series",
       "/api/prom/tail",
+      "/loki/api/v1/query",
+      "/loki/api/v1/query_range",
       "/loki/api/v1/tail",
-      "/loki/api",
+      "/loki/api/v1/label",
+      "/loki/api/v1/labels",
+      "/loki/api/v1/series",
+      "/loki/api/v1/index/stats",
+      "/loki/api/v1/index/volume",
+      "/loki/api/v1/index/volume_range",
+      "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_field",
+      "/loki/api/v1/detected_fields",
+      "/loki/api/v1/detected_labels",
+      "/loki/api/v1/patterns"
+    ],
+    "ruler": [
       "/api/prom/rules",
+      "/api/prom/api/v1/rules",
+      "/api/prom/api/v1/alerts",
       "/loki/api/v1/rules",
       "/prometheus/api/v1/rules",
       "/prometheus/api/v1/alerts"
-    ],
-    "write": [
-      "/api/prom/push",
-      "/loki/api/v1/push"
     ]
   },
   "tls": []
@@ -5128,11 +5746,77 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingress.paths.distributor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Distributor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/push",
+  "/loki/api/v1/push",
+  "/otlp/v1/logs"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.queryFrontend</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Query Frontend. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/query",
+  "/api/prom/label",
+  "/api/prom/series",
+  "/api/prom/tail",
+  "/loki/api/v1/query",
+  "/loki/api/v1/query_range",
+  "/loki/api/v1/tail",
+  "/loki/api/v1/label",
+  "/loki/api/v1/labels",
+  "/loki/api/v1/series",
+  "/loki/api/v1/index/stats",
+  "/loki/api/v1/index/volume",
+  "/loki/api/v1/index/volume_range",
+  "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_field",
+  "/loki/api/v1/detected_fields",
+  "/loki/api/v1/detected_labels",
+  "/loki/api/v1/patterns"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.ruler</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Ruler. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/api/prom/rules",
+  "/api/prom/api/v1/rules",
+  "/api/prom/api/v1/alerts",
+  "/loki/api/v1/rules",
+  "/prometheus/api/v1/rules",
+  "/prometheus/api/v1/alerts"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingress.tls</td>
 			<td>list</td>
 			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -5200,204 +5884,8 @@ null
 			<td>loki</td>
 			<td>object</td>
 			<td>Configuration for running Loki</td>
-			<td><pre lang="json">
-{
-  "analytics": {},
-  "annotations": {},
-  "auth_enabled": true,
-  "commonConfig": {
-    "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
-    "path_prefix": "/var/loki",
-    "replication_factor": 3
-  },
-  "compactor": {},
-  "config": "{{- if .Values.enterprise.enabled}}\n{{- tpl .Values.enterprise.config . }}\n{{- else }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\n{{- end }}\n\n{{- with .Values.loki.server }}\nserver:\n  {{- toYaml . | nindent 2}}\n{{- end}}\n\nmemberlist:\n{{- if .Values.loki.memberlistConfig }}\n  {{- toYaml .Values.loki.memberlistConfig | nindent 2 }}\n{{- else }}\n{{- if .Values.loki.extraMemberlistConfig}}\n{{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}\n{{- end }}\n  join_members:\n    - {{ include \"loki.memberlist\" . }}\n    {{- with .Values.migrate.fromDistributed }}\n    {{- if .enabled }}\n    - {{ .memberlistService }}\n    {{- end }}\n    {{- end }}\n{{- end }}\n\n{{- with .Values.loki.ingester }}\ningester:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- if .Values.loki.commonConfig}}\ncommon:\n{{- toYaml .Values.loki.commonConfig | nindent 2}}\n  storage:\n  {{- include \"loki.commonStorageConfig\" . | nindent 4}}\n{{- end}}\n\n{{- with .Values.loki.limits_config }}\nlimits_config:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\nruntime_config:\n  file: /etc/loki/runtime-config/runtime-config.yaml\n\n{{- with .Values.chunksCache }}\n{{- if .enabled }}\nchunk_store_config:\n  chunk_cache_config:\n    default_validity: {{ .defaultValidity }}\n    background:\n      writeback_goroutines: {{ .writebackParallelism }}\n      writeback_buffer: {{ .writebackBuffer }}\n      writeback_size_limit: {{ .writebackSizeLimit }}\n    memcached:\n      batch_size: {{ .batchSize }}\n      parallelism: {{ .parallelism }}\n    memcached_client:\n      addresses: dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc\n      consistent_hash: true\n      timeout: {{ .timeout }}\n      max_idle_conns: 72\n{{- end }}\n{{- end }}\n\n{{- if .Values.loki.schemaConfig }}\nschema_config:\n{{- toYaml .Values.loki.schemaConfig | nindent 2}}\n{{- end }}\n\n{{- if .Values.loki.useTestSchema }}\nschema_config:\n{{- toYaml .Values.loki.testSchemaConfig | nindent 2}}\n{{- end }}\n\n{{ include \"loki.rulerConfig\" . }}\n\n{{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}\ntable_manager:\n  retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}\n  retention_period: {{ .Values.tableManager.retention_period }}\n{{- end }}\n\nquery_range:\n  align_queries_with_step: true\n  {{- with .Values.loki.query_range }}\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n  {{- end }}\n  {{- if .Values.resultsCache.enabled }}\n  {{- with .Values.resultsCache }}\n  cache_results: true\n  results_cache:\n    cache:\n      default_validity: {{ .defaultValidity }}\n      background:\n        writeback_goroutines: {{ .writebackParallelism }}\n        writeback_buffer: {{ .writebackBuffer }}\n        writeback_size_limit: {{ .writebackSizeLimit }}\n      memcached_client:\n        consistent_hash: true\n        addresses: dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc\n        timeout: {{ .timeout }}\n        update_interval: 1m\n  {{- end }}\n  {{- end }}\n\n{{- with .Values.loki.storage_config }}\nstorage_config:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.query_scheduler }}\nquery_scheduler:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.compactor }}\ncompactor:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.analytics }}\nanalytics:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.querier }}\nquerier:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.index_gateway }}\nindex_gateway:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.frontend }}\nfrontend:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.frontend_worker }}\nfrontend_worker:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\n{{- with .Values.loki.distributor }}\ndistributor:\n  {{- tpl (. | toYaml) $ | nindent 4 }}\n{{- end }}\n\ntracing:\n  enabled: {{ .Values.loki.tracing.enabled }}\n",
-  "configObjectName": "{{ include \"loki.name\" . }}",
-  "configStorageType": "ConfigMap",
-  "containerSecurityContext": {
-    "allowPrivilegeEscalation": false,
-    "capabilities": {
-      "drop": [
-        "ALL"
-      ]
-    },
-    "readOnlyRootFilesystem": true
-  },
-  "distributor": {},
-  "enableServiceLinks": true,
-  "extraMemberlistConfig": {},
-  "frontend": {
-    "scheduler_address": "{{ include \"loki.querySchedulerAddress\" . }}",
-    "tail_proxy_url": "{{ include \"loki.querierAddress\" . }}"
-  },
-  "frontend_worker": {
-    "scheduler_address": "{{ include \"loki.querySchedulerAddress\" . }}"
-  },
-  "generatedConfigObjectName": "{{ include \"loki.name\" . }}",
-  "image": {
-    "digest": null,
-    "pullPolicy": "IfNotPresent",
-    "registry": "docker.io",
-    "repository": "grafana/loki",
-    "tag": null
-  },
-  "index_gateway": {
-    "mode": "simple"
-  },
-  "ingester": {},
-  "limits_config": {
-    "max_cache_freshness_per_query": "10m",
-    "query_timeout": "300s",
-    "reject_old_samples": true,
-    "reject_old_samples_max_age": "168h",
-    "split_queries_by_interval": "15m"
-  },
-  "memberlistConfig": {},
-  "memcached": {
-    "chunk_cache": {
-      "batch_size": 256,
-      "enabled": false,
-      "host": "",
-      "parallelism": 10,
-      "service": "memcached-client"
-    },
-    "results_cache": {
-      "default_validity": "12h",
-      "enabled": false,
-      "host": "",
-      "service": "memcached-client",
-      "timeout": "500ms"
-    }
-  },
-  "podAnnotations": {},
-  "podLabels": {},
-  "podSecurityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "querier": {},
-  "query_range": {},
-  "query_scheduler": {},
-  "readinessProbe": {
-    "httpGet": {
-      "path": "/ready",
-      "port": "http-metrics"
-    },
-    "initialDelaySeconds": 30,
-    "timeoutSeconds": 1
-  },
-  "revisionHistoryLimit": 10,
-  "rulerConfig": {},
-  "runtimeConfig": {},
-  "schemaConfig": {},
-  "server": {
-    "grpc_listen_port": 9095,
-    "http_listen_port": 3100,
-    "http_server_read_timeout": "600s",
-    "http_server_write_timeout": "600s"
-  },
-  "serviceAnnotations": {},
-  "serviceLabels": {},
-  "storage": {
-    "azure": {
-      "accountKey": null,
-      "accountName": null,
-      "connectionString": null,
-      "endpointSuffix": null,
-      "requestTimeout": null,
-      "useFederatedToken": false,
-      "useManagedIdentity": false,
-      "userAssignedId": null
-    },
-    "bucketNames": {
-      "admin": "admin",
-      "chunks": "chunks",
-      "ruler": "ruler"
-    },
-    "filesystem": {
-      "chunks_directory": "/var/loki/chunks",
-      "rules_directory": "/var/loki/rules"
-    },
-    "gcs": {
-      "chunkBufferSize": 0,
-      "enableHttp2": true,
-      "requestTimeout": "0s"
-    },
-    "s3": {
-      "accessKeyId": null,
-      "backoff_config": {},
-      "endpoint": null,
-      "http_config": {},
-      "insecure": false,
-      "region": null,
-      "s3": null,
-      "s3ForcePathStyle": false,
-      "secretAccessKey": null,
-      "signatureVersion": null
-    },
-    "swift": {
-      "auth_url": null,
-      "auth_version": null,
-      "connect_timeout": null,
-      "container_name": null,
-      "domain_id": null,
-      "domain_name": null,
-      "internal": null,
-      "max_retries": null,
-      "password": null,
-      "project_domain_id": null,
-      "project_domain_name": null,
-      "project_id": null,
-      "project_name": null,
-      "region_name": null,
-      "request_timeout": null,
-      "user_domain_id": null,
-      "user_domain_name": null,
-      "user_id": null,
-      "username": null
-    },
-    "type": "s3"
-  },
-  "storage_config": {
-    "boltdb_shipper": {
-      "index_gateway_client": {
-        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
-      }
-    },
-    "hedging": {
-      "at": "250ms",
-      "max_per_second": 20,
-      "up_to": 3
-    },
-    "tsdb_shipper": {
-      "index_gateway_client": {
-        "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
-      }
-    }
-  },
-  "structuredConfig": {},
-  "tenants": [],
-  "testSchemaConfig": {
-    "configs": [
-      {
-        "from": "2024-04-01",
-        "index": {
-          "period": "24h",
-          "prefix": "index_"
-        },
-        "object_store": "filesystem",
-        "schema": "v13",
-        "store": "tsdb"
-      }
-    ]
-  },
-  "tracing": {
-    "enabled": false
-  },
-  "useTestSchema": false
-}
+			<td><pre lang="">
+See values.yaml
 </pre>
 </td>
 		</tr>
@@ -5560,7 +6048,7 @@ null
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -5596,7 +6084,8 @@ null
   "query_timeout": "300s",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
-  "split_queries_by_interval": "15m"
+  "split_queries_by_interval": "15m",
+  "volume_enabled": true
 }
 </pre>
 </td>
@@ -5630,6 +6119,17 @@ null
     "service": "memcached-client",
     "timeout": "500ms"
   }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.pattern_ingester</td>
+			<td>object</td>
+			<td>Optional pattern ingester configuration</td>
+			<td><pre lang="json">
+{
+  "enabled": false
 }
 </pre>
 </td>
@@ -5770,6 +6270,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "chunkDelimiter": null,
     "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
@@ -5777,12 +6278,8 @@ null
     "useManagedIdentity": false,
     "userAssignedId": null
   },
-  "bucketNames": {
-    "admin": "admin",
-    "chunks": "chunks",
-    "ruler": "ruler"
-  },
   "filesystem": {
+    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -5794,6 +6291,7 @@ null
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
+    "disable_dualstack": false,
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -5844,6 +6342,9 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/data/bloomshipper"
+  },
   "boltdb_shipper": {
     "index_gateway_client": {
       "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
@@ -6129,6 +6630,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.annotations</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
@@ -6186,7 +6696,12 @@ false
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
 			<td><pre lang="json">
-{}
+{
+  "fsGroup": 11211,
+  "runAsGroup": 11211,
+  "runAsNonRoot": true,
+  "runAsUser": 11211
+}
 </pre>
 </td>
 		</tr>
@@ -6329,6 +6844,7 @@ false
 			<td>Configuration for the minio subchart</td>
 			<td><pre lang="json">
 {
+  "address": null,
   "buckets": [
     {
       "name": "chunks",
@@ -6349,6 +6865,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -6413,6 +6930,7 @@ false
     },
     "tenant": {
       "name": "self-monitoring",
+      "password": null,
       "secretNamespace": "{{ .Release.Namespace }}"
     }
   },
@@ -6473,6 +6991,24 @@ false
 			<td>Alternative namespace to create dashboards ConfigMap in</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules</td>
+			<td>object</td>
+			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
+			<td><pre lang="json">
+{
+  "additionalGroups": [],
+  "additionalRuleLabels": {},
+  "alerting": true,
+  "annotations": {},
+  "disabled": {},
+  "enabled": false,
+  "labels": {},
+  "namespace": null
+}
 </pre>
 </td>
 		</tr>
@@ -6549,6 +7085,60 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring</td>
+			<td>object</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "grafanaAgent": {
+    "annotations": {},
+    "enableConfigReadAPI": false,
+    "installOperator": false,
+    "labels": {},
+    "priorityClassName": null,
+    "resources": {},
+    "tolerations": []
+  },
+  "logsInstance": {
+    "annotations": {},
+    "clients": null,
+    "labels": {}
+  },
+  "podLogs": {
+    "additionalPipelineStages": [],
+    "annotations": {},
+    "apiVersion": "monitoring.grafana.com/v1alpha1",
+    "labels": {},
+    "relabelings": []
+  },
+  "tenant": {
+    "name": "self-monitoring",
+    "password": null,
+    "secretNamespace": "{{ .Release.Namespace }}"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent</td>
+			<td>object</td>
+			<td>DEPRECATED Grafana Agent configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableConfigReadAPI": false,
+  "installOperator": false,
+  "labels": {},
+  "priorityClassName": null,
+  "resources": {},
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.annotations</td>
 			<td>object</td>
 			<td>Grafana Agent annotations</td>
@@ -6569,7 +7159,7 @@ false
 		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.installOperator</td>
 			<td>bool</td>
-			<td>Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
+			<td>DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
 			<td><pre lang="json">
 false
 </pre>
@@ -6690,6 +7280,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
@@ -6701,6 +7292,15 @@ null
 			<td>Name of the tenant</td>
 			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -7083,6 +7683,7 @@ false
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -7381,6 +7982,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
@@ -7472,6 +8082,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -7827,6 +8438,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for querier service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for querier service</td>
@@ -7918,6 +8538,7 @@ Defaults to allow skew no more then 1 node
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8198,6 +8819,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-frontend service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for query-frontend service</td>
@@ -8266,6 +8896,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8447,6 +9078,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-scheduler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for query-scheduler service</td>
@@ -8554,6 +9194,7 @@ false
   "lifecycle": {},
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "selector": null,
     "size": "10Gi",
@@ -8762,6 +9403,15 @@ false
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9047,6 +9697,56 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the results-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the results-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for results-cache pods</td>
@@ -9305,6 +10005,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": []
@@ -9567,6 +10268,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ruler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for ruler service</td>
@@ -9688,7 +10398,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.24.3"
+"1.27.5"
 </pre>
 </td>
 		</tr>
@@ -10002,6 +10712,15 @@ null
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -10786,6 +11505,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>

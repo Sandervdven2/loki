@@ -17,8 +17,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
@@ -404,7 +404,8 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region = s.Data[storage.KeyAWSRegion]
+		region         = s.Data[storage.KeyAWSRegion]
+		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
 	)
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
@@ -413,9 +414,10 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 
 	cfg := &storage.S3StorageConfig{
-		Buckets: string(buckets),
-		Region:  string(region),
-		SSE:     sseCfg,
+		Buckets:        string(buckets),
+		Region:         string(region),
+		SSE:            sseCfg,
+		ForcePathStyle: forcePathStyle,
 	}
 
 	switch credentialMode {

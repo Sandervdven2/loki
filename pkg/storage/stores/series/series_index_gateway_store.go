@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	statscontext "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
@@ -58,6 +59,10 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 		result[i] = *ref
 	}
 
+	statsCtx := statscontext.FromContext(ctx)
+	statsCtx.AddIndexTotalChunkRefs(response.Stats.TotalChunks)
+	statsCtx.AddIndexPostFilterChunkRefs(response.Stats.PostFilterChunks)
+
 	return result, nil
 }
 
@@ -80,11 +85,12 @@ func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from,
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	resp, err := c.client.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{
 		MetricName: metricName,
 		From:       from,
 		Through:    through,
+		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
 	})
 	if err != nil {
 		return nil, err

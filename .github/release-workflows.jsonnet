@@ -1,10 +1,7 @@
 local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 
-local releaseLibRef = std.filter(
-  function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
-  (import 'jsonnetfile.json').dependencies
-)[0].version;
+local releaseLibRef = 'main';
 
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 
@@ -20,10 +17,23 @@ local imageJobs = {
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
 };
 
-local buildImage = 'grafana/loki-build-image:0.33.1';
-local golangCiLintVersion = 'v1.55.1';
+local weeklyImageJobs = {
+  loki: build.weeklyImage('loki', 'cmd/loki'),
+  fluentd: build.weeklyImage('fluent-plugin-loki', 'clients/cmd/fluentd', platform=['linux/amd64']),
+  'fluent-bit': build.weeklyImage('fluent-bit-plugin-loki', 'clients/cmd/fluent-bit', platform=['linux/amd64']),
+  logstash: build.weeklyImage('logstash-output-loki', 'clients/cmd/logstash', platform=['linux/amd64']),
+  logcli: build.weeklyImage('logcli', 'cmd/logcli'),
+  'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary'),
+  'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
+  promtail: build.weeklyImage('promtail', 'clients/cmd/promtail'),
+  querytee: build.weeklyImage('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
+};
 
-local imageBuildTimeoutMin = 40;
+local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
+local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
+local golangCiLintVersion = 'v1.60.3';
+
+local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
 
 {
@@ -72,7 +82,7 @@ local imagePrefix = 'grafana';
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
-      useGitHubAppToken=false,
+      useGitHubAppToken=true,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({
@@ -95,5 +105,43 @@ local imagePrefix = 'grafana';
         },
       },
     },
+  }),
+  'images.yml': std.manifestYamlDoc({
+    name: 'publish images',
+    on: {
+      push: {
+        branches: [
+          'k[0-9]+*',  // This is a weird glob pattern, not a regexp, do not use ".*", see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+          'main',
+        ],
+      },
+    },
+    permissions: {
+      'id-token': 'write',
+      contents: 'write',
+      'pull-requests': 'write',
+    },
+    jobs: {
+      check: {
+        uses: checkTemplate,
+        with: {
+          build_image: buildImage,
+          golang_ci_lint_version: golangCiLintVersion,
+          release_lib_ref: releaseLibRef,
+          skip_validation: false,
+          use_github_app_token: true,
+        },
+      },
+    } + std.mapWithKey(function(name, job)
+      job
+      + lokiRelease.job.withNeeds(['check'])
+      + {
+        env: {
+          BUILD_TIMEOUT: imageBuildTimeoutMin,
+          RELEASE_REPO: 'grafana/loki',
+          RELEASE_LIB_REF: releaseLibRef,
+          IMAGE_PREFIX: imagePrefix,
+        },
+      }, weeklyImageJobs),
   }),
 }

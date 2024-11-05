@@ -17,7 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -52,6 +52,7 @@ const (
 	LB_NLB_TYPE                string = "net"
 	LB_ALB_TYPE                string = "app"
 	WAF_LOG_TYPE               string = "WAFLogs"
+	GUARDDUTY_LOG_TYPE         string = "GuardDuty"
 	PEGA_LOG_TYPE              string = "PegaLogs"
 )
 
@@ -78,15 +79,20 @@ var (
 	// source: https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
 	// format: aws-waf-logs-suffix[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/year/month/day/hour/minute/aws-account-id_waflogs_region_webacl-name_timestamp_hash.log.gz
 	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
-	defaultFilenameRegex    = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
+	// AWS GuardDuty
+	// source: https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_exportfindings.html
+	// format: my-bucket/AWSLogs/aws-account-id/GuardDuty/region/year/month/day/random-string.jsonl.gz
+	// example: my-bucket/AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz
+	defaultFilenameRegex    = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)_(?:\w+-\w+-(?:\w+-)?\d)_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 	defaultTimestampRegex   = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
-	cloudtrailFilenameRegex = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
+	cloudtrailFilenameRegex = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)_(?:\w+-\w+-(?:\w+-)?\d)_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
 	cloudfrontFilenameRegex = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
 	pegaFilenameRegex       = regexp.MustCompile(`logs/2023*`)
 	//pegaFilenameRegex        = regexp.MustCompile(`vbank-dvb-dt2/*`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
 	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
 	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
+	guarddutyFilenameRegex   = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>GuardDuty)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/.+`)
 	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
 	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"`)
 
@@ -137,6 +143,14 @@ var (
 			timestampRegex: pegaTimestampRegex,
 			timestampType:  "unix",
 			typeRegex:      pegaLogstreamTypeRegex,
+		},
+		GUARDDUTY_LOG_TYPE: {
+			logTypeLabel:    "s3_guardduty",
+			filenameRegex:   guarddutyFilenameRegex,
+			ownerLabelKey:   "account_id",
+			timestampFormat: time.RFC3339,
+			timestampRegex:  defaultTimestampRegex,
+			timestampType:   "string",
 		},
 	}
 )
@@ -244,9 +258,38 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 
 	scanner := bufio.NewScanner(gzreader)
 
+	ls := model.LabelSet{
+		model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
+		model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
+		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
+	}
+
+	ls = applyLabels(ls)
+
+	// extract the timestamp of the nested event and sends the rest as raw json
+	if labels["type"] == CLOUDTRAIL_LOG_TYPE || labels["type"] == GUARDDUTY_LOG_TYPE {
+		records := make(chan Record)
+		jsonStream := NewJSONStream(records)
+		go jsonStream.Start(gzreader, parser.skipHeaderCount)
+		// Stream json file
+		for record := range jsonStream.records {
+			if record.Error != nil {
+				return record.Error
+			}
+			trailEntry, err := parseCloudtrailRecord(record)
+			if err != nil {
+				return err
+			}
+			if err := b.add(ctx, entry{ls, trailEntry}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	var lineCount int
 	for scanner.Scan() {
-		log_line := scanner.Text()
+		logLine := scanner.Text()
 		lineCount++
 		if lineCount <= parser.skipHeaderCount {
 			continue
@@ -273,7 +316,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		ls = applyLabels(ls)
 
 		timestamp := time.Now()
-		match := parser.timestampRegex.FindStringSubmatch(log_line)
+		match := parser.timestampRegex.FindStringSubmatch(logLine)
 		if len(match) > 0 {
 			if labels["lb_type"] == LB_NLB_TYPE {
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
@@ -298,7 +341,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
-			Line:      log_line,
+			Line:      logLine,
 			Timestamp: timestamp,
 		}}); err != nil {
 			return err
@@ -356,7 +399,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 				Key:    aws.String(labels["key"]),
 			})
 		if err != nil {
-			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {
