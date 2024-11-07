@@ -295,12 +295,12 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			continue
 		}
 		if printLogLine {
-			fmt.Println(log_line)
+			fmt.Println(logLine)
 		}
 
 		var logStream string = "undefined"
 
-		typeMatch := parser.typeRegex.FindStringSubmatch(log_line)
+		typeMatch := parser.typeRegex.FindStringSubmatch(logLine)
 		if len(typeMatch) > 0 {
 			logStream = typeMatch[1]
 			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
