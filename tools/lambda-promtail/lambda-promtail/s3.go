@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
@@ -161,7 +163,14 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	if c, ok := s3Clients[region]; ok {
 		s3Client = c
 	} else {
-		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+		//cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(func() aws.Retryer {
+			return retry.NewStandard(func(o *retry.StandardOptions) {
+				o.RateLimiter = ratelimit.None
+				o.MaxAttempts = 10
+				o.MaxBackoff = time.Second * 60
+			})
+		}))
 		if err != nil {
 			return nil, err
 		}
