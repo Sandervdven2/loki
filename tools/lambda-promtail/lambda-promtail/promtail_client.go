@@ -40,12 +40,23 @@ func NewPromtailClient(cfg *promtailClientConfig, log *log.Logger) *promtailClie
 }
 
 func NewHTTPClient(cfg *httpClientConfig) *http.Client {
-	transport := http.DefaultTransport
+	//transport := http.DefaultTransport
+
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 100
+	t.MaxConnsPerHost = 100
+	t.MaxIdleConnsPerHost = 100
+
+	// httpClient = &http.Client{
+	// Timeout:   10 * time.Second,
+	// Transport: t,
+	// }
+
 	if cfg.skipTlsVerify {
-		transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		t = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	}
 	return &http.Client{
 		Timeout:   cfg.timeout,
-		Transport: transport,
+		Transport: t,
 	}
 }
