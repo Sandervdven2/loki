@@ -5,6 +5,7 @@
 *.output
 *.tgz
 *.exe
+*.zip
 __debug_bin
 requirements.lock
 mixin/vendor/
@@ -35,6 +36,7 @@ dist
 .idea
 pkg/loki/wal
 tools/lambda-promtail/main
+bootstrap
 
 # Workspaces
 *.work
