@@ -96,7 +96,7 @@ var (
 	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
 	guarddutyFilenameRegex   = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>GuardDuty)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/.+`)
 	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
-	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"`)
+	pegaLogstreamTypeRegex   = regexp.MustCompile(`"stream":"([^"]+)"`)
 
 	parsers = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
