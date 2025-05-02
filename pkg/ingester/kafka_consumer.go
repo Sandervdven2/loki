@@ -22,6 +22,7 @@ import (
 type consumerMetrics struct {
 	consumeLatency prometheus.Histogram
 	currentOffset  prometheus.Gauge
+	pushLatency    prometheus.Histogram
 }
 
 // newConsumerMetrics initializes and returns a new consumerMetrics instance
@@ -36,12 +37,17 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			Name: "loki_ingester_partition_current_offset",
 			Help: "The current offset of the Kafka ingester consumer.",
 		}),
+		pushLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                        "loki_ingester_partition_push_latency_seconds",
+			Help:                        "The latency of a push request after consuming from Kafka",
+			NativeHistogramBucketFactor: 1.1,
+		}),
 	}
 }
 
-func NewKafkaConsumerFactory(pusher logproto.PusherServer, logger log.Logger, reg prometheus.Registerer) partition.ConsumerFactory {
+func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
-	return func(committer partition.Committer) (partition.Consumer, error) {
+	return func(committer partition.Committer, logger log.Logger) (partition.Consumer, error) {
 		decoder, err := kafka.NewDecoder()
 		if err != nil {
 			return nil, err
@@ -73,6 +79,10 @@ func (kc *kafkaConsumer) Start(ctx context.Context, recordsChan <-chan []partiti
 		for {
 			select {
 			case <-ctx.Done():
+				// It can happen that the context is canceled while there are unprocessed records
+				// in the channel. However, we do not need to process all remaining records,
+				// and can exit out instead, as partition offsets are not committed until
+				// the record has been handed over to the Pusher and committed in the WAL.
 				level.Info(kc.logger).Log("msg", "shutting down kafka consumer")
 				return
 			case records := <-recordsChan:
@@ -110,7 +120,12 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			Streams: []logproto.Stream{stream},
 		}
 		if err := retryWithBackoff(ctx, func(attempts int) error {
-			if _, err := kc.pusher.Push(recordCtx, req); err != nil {
+			pushTime := time.Now()
+			_, err := kc.pusher.Push(recordCtx, req)
+
+			kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+
+			if err != nil {
 				level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", record.Offset, "attempts", attempts)
 				return err
 			}

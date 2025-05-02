@@ -11,8 +11,6 @@ import (
 	rt "runtime"
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log/level"
@@ -28,30 +26,33 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
-	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	ingester_kafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
+	"github.com/grafana/loki/v3/pkg/limits"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
-	querierrf1 "github.com/grafana/loki/v3/pkg/querier-rf1"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/worker"
@@ -66,6 +67,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
@@ -85,17 +87,18 @@ type Config struct {
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	UI                  ui.Config                  `yaml:"ui,omitempty"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QuerierRF1          querierrf1.Config          `yaml:"querier_rf1,omitempty"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
-	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
+	BlockScheduler      blockscheduler.Config      `yaml:"block_scheduler,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
@@ -110,9 +113,12 @@ type Config struct {
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
-	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
-	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+
+	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
+	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
+	IngestLimitsFrontendClient limits_frontend_client.Config `yaml:"ingest_limits_frontend_client,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -166,7 +172,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
-	c.QuerierRF1.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -192,9 +197,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
-	c.Metastore.RegisterFlags(f)
-	c.MetastoreClient.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
+	c.BlockBuilder.RegisterFlags(f)
+	c.BlockScheduler.RegisterFlags(f)
+	c.IngestLimits.RegisterFlags(f)
+	c.IngestLimitsFrontend.RegisterFlags(f)
+	c.IngestLimitsFrontendClient.RegisterFlags(f)
+	c.UI.RegisterFlags(f)
+	c.DataObj.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -270,8 +280,23 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
 	}
+	if err := c.BlockBuilder.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_builder config"))
+	}
+	if err := c.BlockScheduler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_scheduler config"))
+	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
+	}
+	if err := c.IngestLimits.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits config"))
+	}
+	if err := c.IngestLimitsFrontend.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
+	}
+	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))
 	}
 	if err := c.Worker.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
@@ -304,9 +329,16 @@ func (c *Config) Validate() error {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
+		if err := c.DataObj.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
+		}
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
+	}
+
+	if err := c.UI.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ui config"))
 	}
 
 	errs = append(errs, validateSchemaValues(c)...)
@@ -353,14 +385,17 @@ type Loki struct {
 
 	Server                    *server.Server
 	InternalServer            *server.Server
+	UI                        *ui.Service
 	ring                      *ring.Ring
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
+	ingestLimits              *limits.IngestLimits
+	ingestLimitsRing          *ring.Ring
+	ingestLimitsFrontend      *limits_frontend.Frontend
+	ingestLimitsFrontendRing  *ring.Ring
 	Ingester                  ingester.Interface
-	IngesterRF1               ingester_rf1.Interface
-	IngesterRF1RingClient     *ingester_rf1.RingClient
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
@@ -369,6 +404,7 @@ type Loki struct {
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
 	BloomStore                bloomshipper.Store
+	bloomGatewayClient        bloomgateway.Client
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -384,10 +420,11 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	MetastoreClient           *metastoreclient.Client
-	partitionRingWatcher      *ring.PartitionRingWatcher
+	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	kafkaIngester             *ingester_kafka.Ingester
+	blockBuilder              *blockbuilder.BlockBuilder
+	blockScheduler            *blockscheduler.BlockScheduler
+	dataObjConsumer           *consumer.Service
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -426,14 +463,15 @@ func (t *Loki) setupAuthMiddleware() {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/grpc.health.v1.Health/Watch",
-			"/metastorepb.MetastoreService/AddBlock",
-			"/metastorepb.MetastoreService/ListBlocksForQuery",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
+			"/blockbuilder.types.SchedulerService/GetJob",
+			"/blockbuilder.types.SchedulerService/CompleteJob",
+			"/blockbuilder.types.SchedulerService/SyncJob",
 		})
 }
 
@@ -465,6 +503,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
+	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler())
 }
 
 // ListTargets prints a list of available user visible targets and their
@@ -644,20 +683,28 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
-		// Ingester RF1 has a special check that makes sure that it was able to register into the ring,
-		// and that all other ring entries are OK too.
-		if t.IngesterRF1 != nil {
-			if err := t.IngesterRF1.CheckReady(r.Context()); err != nil {
-				http.Error(w, "RF-1 Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
-				return
-			}
-		}
-
 		// Query Frontend has a special check that makes sure that a querier is attached before it signals
 		// itself as ready
 		if t.frontend != nil {
 			if err := t.frontend.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Query Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		// Ingest Limits has a special check that makes sure that it was able to register into the ring
+		if t.ingestLimits != nil {
+			if err := t.ingestLimits.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingest Limits not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
+		// Ingest Limits Frontend has a special check that makes sure that it was able to register into
+		// the ring
+		if t.ingestLimitsFrontend != nil {
+			if err := t.ingestLimitsFrontend.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingest Limits Frontend not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -678,10 +725,14 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimitsRing, t.initIngestLimitsRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimitsFrontendRing, t.initIngestLimitsFrontendRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(IngestLimits, t.initIngestLimits)
+	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -701,6 +752,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
+	mm.RegisterModule(BloomGatewayClient, t.initBloomGatewayClient)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics, modules.UserInvisibleModule)
@@ -709,6 +761,11 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
+	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
+	mm.RegisterModule(UI, t.initUI)
+	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -720,38 +777,51 @@ func (t *Loki) setupModuleManager() error {
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
-		OverridesExporter:        {Overrides, Server},
+		OverridesExporter:        {Overrides, Server, UI},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
+		UI:                       {Server},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UI},
+		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
+		IngestLimits:             {MemberlistKV, Server},
+		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
+		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UI},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UI},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
-		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UI},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UI},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UI},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
-		TableManager:             {Server, Analytics},
-		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
-		BloomGateway:             {Server, BloomStore, Analytics},
-		BloomPlanner:             {Server, BloomStore, Analytics, Store},
-		BloomBuilder:             {Server, BloomStore, Analytics, Store},
-		BloomStore:               {IndexGatewayRing},
+		TableManager:             {Server, Analytics, UI},
+		Compactor:                {Server, Overrides, MemberlistKV, Analytics, UI},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UI},
+		BloomGateway:             {Server, BloomStore, Analytics, UI},
+		BloomPlanner:             {Server, BloomStore, Analytics, Store, UI},
+		BloomBuilder:             {Server, BloomStore, Analytics, Store, UI},
+		BloomStore:               {IndexGatewayRing, BloomGatewayClient},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
-		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
+		PatternIngesterTee:       {Server, Overrides, MemberlistKV, Analytics, PatternRingClient},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides, UI},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
+		BlockBuilder:             {PartitionRing, Store, Server, UI},
+		BlockScheduler:           {Server, UI},
+		DataObjExplorer:          {Server, UI},
+		DataObjConsumer:          {PartitionRing, Server, UI},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, UI},
+	}
+
+	if t.Cfg.IngestLimits.Enabled {
+		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

@@ -1065,7 +1065,14 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(
+	ctx context.Context,
+	from, through time.Time,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -1089,7 +1096,10 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor))
+		its = append(
+			its,
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+		)
 	}
 
 	if !c.head.IsEmpty() {
@@ -1097,7 +1107,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
 	}
 
 	var it iter.SampleIterator
@@ -1149,7 +1159,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
 			continue
 		}
 		if _, err := newChunk.Append(&entry); err != nil {
@@ -1186,11 +1196,21 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (b encBlock) SampleIterator(
+	ctx context.Context,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
-	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(
+		ctx,
+		compression.GetReaderPool(b.enc),
+		b.b,
+		b.format,
+		b.symbolizer,
+		extractors...,
+	)
 }
 
 func (b block) Offset() int {
@@ -1229,7 +1249,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata)
 		if !matches {
 			return
 		}
@@ -1275,45 +1295,61 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
-func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+}
+
+func (hb *headBlock) SampleIterator(
+	ctx context.Context,
+	mint, maxt int64,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
 	}
+
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
 
+	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-		if !ok {
-			continue
+		for _, extractor := range extractors {
+			stats.AddHeadChunkBytes(int64(len(e.s)))
+			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+			if !ok {
+				continue
+			}
+			var (
+				found bool
+				s     *logproto.Series
+			)
+
+			lblStr := lbls.String()
+			baseHash := extractor.BaseLabels().Hash()
+			if s, found = series[lblStr]; !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+					StreamHash: baseHash,
+				}
+				series[lblStr] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.t,
+				Value:     value,
+				Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+			})
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
 		}
 		stats.AddPostFilterLines(1)
-		var (
-			found bool
-			s     *logproto.Series
-		)
-
-		lbs := parsedLabels.String()
-		if s, found = series[lbs]; !found {
-			s = &logproto.Series{
-				Labels:     lbs,
-				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-				StreamHash: baseHash,
-			}
-			series[lbs] = s
-		}
-
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-		})
 	}
 
-	if extractor.ReferencedStructuredMetadata() {
+	if setQueryReferencedStructuredMetadata {
 		stats.SetQueryReferencedStructuredMetadata()
 	}
 	if len(series) == 0 {
@@ -1329,10 +1365,6 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		}
 		return nil
 	})
-}
-
-func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 type bufferedIterator struct {
@@ -1647,7 +1679,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue
 		}
@@ -1672,10 +1704,25 @@ func (e *entryBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func newSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
+
+	if len(extractors) > 1 {
+		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
+	}
+
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractor,
+		extractor:        extractors[0],
 		stats:            stats.FromContext(ctx),
 	}
 }
@@ -1692,7 +1739,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !ok {
 			continue
 		}

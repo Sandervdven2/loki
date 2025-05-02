@@ -1,8 +1,10 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +77,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	b.Reset()
 
 	// This works for any category
-	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details")...)
+	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"))
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
@@ -462,4 +464,68 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		lbs.String(),
 		res.String(),
 	)
+}
+
+// benchmark streamLineSampleExtractor.Process method
+func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
+	// Setup some test data
+	baseLabels := labels.FromStrings(
+		"namespace", "prod",
+		"cluster", "us-east-1",
+		"pod", "my-pod-123",
+		"container", "main",
+		"stream", "stdout",
+	)
+
+	structuredMeta := []labels.Label{
+		{Name: "level", Value: "info"},
+		{Name: "caller", Value: "http.go:42"},
+		{Name: "user", Value: "john"},
+		{Name: "trace_id", Value: "abc123"},
+	}
+
+	testLine := []byte(`{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"test message","duration_ms":150}`)
+
+	// JSON parsing + filtering + label extraction
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "level", "info")
+	filter := NewStringLabelFilter(matcher)
+	stages := []Stage{
+		NewJSONParser(false),
+		filter,
+	}
+	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false)
+	require.NoError(b, err)
+	streamEx := ex.ForStream(baseLabels)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
+	}
+}
+
+func BenchmarkLabelsBuilder_Add(b *testing.B) {
+	sizes := []int{10, 100, 1000, 10000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			// Pre-generate labels that should be added
+			newB := labels.NewScratchBuilder(size)
+			for i := 0; i < size; i++ {
+				newB.Add(fmt.Sprintf("label_%d", i), fmt.Sprintf("value_%d", i))
+			}
+			newLabels := newB.Labels()
+
+			lbs := labels.FromStrings("already", "in")
+			builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				builder.Reset()
+				builder.Add(StructuredMetadataLabel, newLabels)
+			}
+		})
+	}
 }
