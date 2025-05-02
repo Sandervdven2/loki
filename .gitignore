@@ -40,6 +40,9 @@ tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/ui/frontend/node_modules/*
 pkg/ui/frontend/.vite/*
+tools/lambda-promtail/bootstrap
+tools/lambda-promtail/function.zip
+tools/lambda-promtail/functionCloud.zip
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login
