@@ -37,6 +37,7 @@ pkg/loki/wal
 tools/lambda-promtail/main
 tools/lambda-promtail/bootstrap
 tools/lambda-promtail/function.zip
+tools/lambda-promtail/functionCloud.zip
 
 # Workspaces
 *.work

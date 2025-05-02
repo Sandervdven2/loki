@@ -89,14 +89,14 @@ var (
 	defaultTimestampRegex   = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
 	cloudtrailFilenameRegex = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)_(?:\w+-\w+-(?:\w+-)?\d)_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
 	cloudfrontFilenameRegex = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
-	pegaFilenameRegex       = regexp.MustCompile(`logs/2023*`)
+	pegaFilenameRegex       = regexp.MustCompile(`logs/*`)
 	//pegaFilenameRegex        = regexp.MustCompile(`vbank-dvb-dt2/*`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
 	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
 	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
 	guarddutyFilenameRegex   = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>GuardDuty)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/.+`)
 	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
-	pegaLogstreamTypeRegex   = regexp.MustCompile(`"stream":"([^"]+)"`)
+	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"|"stream":"([^"]+)"`)
 
 	parsers = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
