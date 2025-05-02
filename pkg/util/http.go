@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -21,7 +22,16 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
+const messageSizeLargerErrFmt = "%w than max (%d vs %d)"
+
+var ErrMessageSizeTooLarge = errors.New("message size too large")
+
+const (
+	HTTPRateLimited  = "rate_limited"
+	HTTPServerError  = "server_error"
+	HTTPErrorUnknown = "unknown"
+	HTTPClientError  = "client_error"
+)
 
 // IsRequestBodyTooLarge returns true if the error is "http: request body too large".
 func IsRequestBodyTooLarge(err error) bool {
@@ -186,11 +196,11 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
 	defer func() {
 		if err != nil && len(body) > maxSize {
-			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
+			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(body), maxSize)
 		}
 	}()
 	if expectedSize > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, expectedSize, maxSize)
 	}
 	buffer, ok := tryBufferFromReader(reader)
 	if ok {
@@ -230,7 +240,7 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
 	bufBytes := buffer.Bytes()
 	if len(bufBytes) > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(bufBytes), maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(bufBytes), maxSize)
 	}
 	switch compression {
 	case NoCompression:
@@ -245,7 +255,7 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression Compres
 			return nil, err
 		}
 		if size > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, size, maxSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)
 		if err != nil {
@@ -306,4 +316,29 @@ func IsValidURL(endpoint string) bool {
 	}
 
 	return u.Scheme != "" && u.Host != ""
+}
+
+func ErrorTypeFromHTTPStatus(status int) string {
+	errorType := HTTPErrorUnknown
+	if status == 429 {
+		errorType = HTTPRateLimited
+	} else if status/100 == 5 {
+		errorType = HTTPServerError
+	} else if status/100 != 2 {
+		errorType = HTTPClientError
+	}
+
+	return errorType
+}
+
+func IsError(status int) bool {
+	return status < 200 || status >= 300
+}
+
+func IsServerError(status int) bool {
+	return status/100 == 5
+}
+
+func IsRateLimited(status int) bool {
+	return status == 429
 }

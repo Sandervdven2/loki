@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/backoff"
 
@@ -43,7 +45,7 @@ var defaultUserAgent = fmt.Sprintf("pattern-ingester-push/%s", build.GetVersion(
 type EntryWriter interface {
 	// WriteEntry handles sending the log to the output
 	// To maintain consistent log timing, Write is expected to be non-blocking
-	WriteEntry(ts time.Time, entry string, lbls labels.Labels)
+	WriteEntry(ts time.Time, e string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter)
 	Stop()
 }
 
@@ -58,8 +60,9 @@ type Push struct {
 	contentType string
 	logger      log.Logger
 
-	// shutdown channels
-	quit chan struct{}
+	running  sync.WaitGroup
+	quit     chan struct{}
+	quitOnce sync.Once
 
 	// auth
 	username, password string
@@ -71,12 +74,15 @@ type Push struct {
 	backoff *backoff.Config
 
 	entries entries
+
+	metrics *Metrics
 }
 
 type entry struct {
-	ts     time.Time
-	entry  string
-	labels labels.Labels
+	ts                 time.Time
+	entry              string
+	labels             labels.Labels
+	structuredMetadata []logproto.LabelAdapter
 }
 
 type entries struct {
@@ -108,6 +114,7 @@ func NewPush(
 	useTLS bool,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
+	metrics *Metrics,
 ) (*Push, error) {
 	client, err := config.NewClientFromConfig(cfg, "pattern-ingester-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -142,23 +149,25 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
+		metrics: metrics,
 	}
 
+	p.running.Add(1)
 	go p.run(pushPeriod)
 	return p, nil
 }
 
 // WriteEntry implements EntryWriter
-func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels) {
-	p.entries.add(entry{ts: ts, entry: e, labels: lbls})
+func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter) {
+	p.entries.add(entry{ts: ts, entry: e, labels: lbls, structuredMetadata: structuredMetadata})
 }
 
 // Stop will cancel any ongoing requests and stop the goroutine listening for requests
 func (p *Push) Stop() {
-	if p.quit != nil {
+	p.quitOnce.Do(func() {
 		close(p.quit)
-		p.quit = nil
-	}
+	})
+	p.running.Wait()
 }
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
@@ -170,6 +179,9 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	defer sp.Finish()
 
 	entries := p.entries.reset()
+	if len(entries) == 0 {
+		return nil, nil
+	}
 
 	entriesByStream := make(map[string][]logproto.Entry)
 	for _, e := range entries {
@@ -180,8 +192,9 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		}
 
 		entries = append(entries, logproto.Entry{
-			Timestamp: e.ts,
-			Line:      e.entry,
+			Timestamp:          e.ts,
+			Line:               e.entry,
+			StructuredMetadata: e.structuredMetadata,
 		})
 		entriesByStream[stream] = entries
 	}
@@ -208,8 +221,12 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		})
 
 		if len(services) < serviceLimit {
-			services = append(services, lbls.Get(push.AggregatedMetricLabel))
+			services = append(services, lbls.Get(constants.AggregatedMetricLabel))
 		}
+	}
+
+	if len(streams) == 0 {
+		return nil, nil
 	}
 
 	req := &logproto.PushRequest{
@@ -221,6 +238,10 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	}
 
 	payload = snappy.Encode(nil, payload)
+
+	p.metrics.streamsPerPush.WithLabelValues(p.tenantID).Observe(float64(len(streams)))
+	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
+	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
 
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
@@ -235,6 +256,8 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 // run pulls lines out of the channel and sends them to Loki
 func (p *Push) run(pushPeriod time.Duration) {
+	defer p.running.Done()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	pushTicker := time.NewTimer(pushPeriod)
 	defer pushTicker.Stop()
@@ -255,6 +278,10 @@ func (p *Push) run(pushPeriod time.Duration) {
 				continue
 			}
 
+			if len(payload) == 0 {
+				continue
+			}
+
 			// We will use a timeout within each attempt to send
 			backoff := backoff.New(context.Background(), *p.backoff)
 
@@ -267,19 +294,19 @@ func (p *Push) run(pushPeriod time.Duration) {
 					break
 				}
 
-				if status > 0 && status != 429 && status/100 != 5 {
+				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
 					pushTicker.Reset(pushPeriod)
 					break
 				}
 
 				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", "status", status, "error", err)
+					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
 					pushTicker.Reset(pushPeriod)
 					break
 				}
 				level.Warn(p.logger).
-					Log("msg", "failed to send entry, retrying", "entry", "status", status, "error", err)
+					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
 				backoff.Wait()
 			}
 
@@ -302,6 +329,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	defer sp.Finish()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
+	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
+
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
@@ -320,23 +349,29 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 
 	resp, err = p.httpClient.Do(req)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			p.metrics.writeTimeout.WithLabelValues(p.tenantID).Inc()
+		}
 		return -1, fmt.Errorf("failed to push payload: %w", err)
 	}
-	status := resp.StatusCode
-	if status/100 != 2 {
+	statusCode := resp.StatusCode
+	if util.IsError(statusCode) {
+		errType := util.ErrorTypeFromHTTPStatus(statusCode)
+
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
 		line := ""
 		if scanner.Scan() {
 			line = scanner.Text()
 		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, statusCode, line)
+		p.metrics.pushErrors.WithLabelValues(p.tenantID, errType).Inc()
 	}
 
 	if err := resp.Body.Close(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 	}
 
-	return status, err
+	return statusCode, err
 }
 
 func AggregatedMetricEntry(

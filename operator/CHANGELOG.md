@@ -1,5 +1,43 @@
 ## Main
 
+## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** Add configuration option for dropping OTLP attributes ([#15857](https://github.com/grafana/loki/issues/15857))
+
+### Features
+
+* **operator:** Add configuration option for dropping OTLP attributes ([#15857](https://github.com/grafana/loki/issues/15857)) ([bd1ea23](https://github.com/grafana/loki/commit/bd1ea2313220b9aa187ff5b252f55512434c1865))
+* **operator:** Add support for Swift TLS CA configuration ([#15260](https://github.com/grafana/loki/issues/15260)) ([62a72f6](https://github.com/grafana/loki/commit/62a72f6405d5a5cbb0814fab8010c215b1782c93))
+* **operator:** Enable time-based stream-sharding ([#16390](https://github.com/grafana/loki/issues/16390)) ([1b4f1f5](https://github.com/grafana/loki/commit/1b4f1f57fa6ceac405f5ab5d0314de9d97e309d3))
+* **operator:** Update Loki operand to v3.4.2 ([#16360](https://github.com/grafana/loki/issues/16360)) ([42f87d3](https://github.com/grafana/loki/commit/42f87d3064b60438df09d1eb799fd50e5753d1f8))
+
+
+### Bug Fixes
+
+* **operator:** Fix minimum available ingesters for 1x.pico size ([#16035](https://github.com/grafana/loki/issues/16035)) ([40cf074](https://github.com/grafana/loki/commit/40cf074fba0ed0016a8ca64bed554f3d628e7ec6))
+* **operator:** Select non-zero delete worker count for all sizes ([#16492](https://github.com/grafana/loki/issues/16492)) ([1e5579a](https://github.com/grafana/loki/commit/1e5579abef02ed03f9dc87cf7d09f52f53768152))
+* **operator:** Update maximum OpenShift version ([#16443](https://github.com/grafana/loki/issues/16443)) ([ddf3cfb](https://github.com/grafana/loki/commit/ddf3cfbba7a6529a6902036c486b523b588818e3))
+* **operator:** Update OTLP user guide to reflect change in LokiStack ([#16057](https://github.com/grafana/loki/issues/16057)) ([14e2c87](https://github.com/grafana/loki/commit/14e2c875d2bc5d6678f964f1477cfafe6f37e496))
+* **operator:** Update skipRange in OpenShift variant ([#15984](https://github.com/grafana/loki/issues/15984)) ([dfbe00c](https://github.com/grafana/loki/commit/dfbe00c88a2f17da11b726a3461c11324c21fcca))
+
+## [0.7.1](https://github.com/grafana/loki/compare/operator/v0.7.0...operator/v0.7.1) (2024-11-11)
+
+
+### Features
+
+* **operator:** Add support for managed GCP WorkloadIdentity ([#14752](https://github.com/grafana/loki/issues/14752)) ([7635a5c](https://github.com/grafana/loki/commit/7635a5cffa80cf5ff627b8de2ed00fa96c058629))
+
+
+### Bug Fixes
+
+* **operator:** Add log attribute for level to structured metadata ([#14776](https://github.com/grafana/loki/issues/14776)) ([036c131](https://github.com/grafana/loki/commit/036c1312d5fd797dda9839dc30d5028e8b7f6c59))
+* **operator:** Fix maximum OpenShift version ([#14764](https://github.com/grafana/loki/issues/14764)) ([cc496c6](https://github.com/grafana/loki/commit/cc496c68b76b56c457f6c30d696de23698addaa9))
+* **operator:** Fix operator release pipeline warnings ([#14817](https://github.com/grafana/loki/issues/14817)) ([e707a3d](https://github.com/grafana/loki/commit/e707a3dfb2e25df76585ab42f715e361233479c8))
+* **operator:** update kube-rbac-proxy to upstream registry ([#14809](https://github.com/grafana/loki/issues/14809)) ([568d22f](https://github.com/grafana/loki/commit/568d22f598c763942e3d277aa6005050281e5f49))
+
 ## [0.7.0](https://github.com/grafana/loki/compare/operator/v0.6.2...operator/v0.7.0) (2024-11-01)
 
 

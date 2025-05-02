@@ -2,7 +2,9 @@ package log
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -139,6 +141,7 @@ type BaseLabelsBuilder struct {
 	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
 	without, noLabels            bool
 	referencedStructuredMetadata bool
+	jsonPaths                    map[string][]string // Maps label names to their original JSON paths
 
 	resultCache map[uint64]LabelsResult
 	*hasher
@@ -174,6 +177,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 		parserKeyHints: parserKeyHints,
 		noLabels:       noLabels,
 		without:        without,
+		jsonPaths:      make(map[string][]string),
 	}
 }
 
@@ -381,16 +385,22 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder 
 	}
 	b.add[category] = append(b.add[category], labels.Label{Name: n, Value: v})
 
-	// Sometimes labels are set and later modified. Only record
-	// each label once
-	b.parserKeyHints.RecordExtracted(n)
+	if category == ParsedLabel {
+		// We record parsed labels as extracted so that future parse stages can
+		// quickly bypass any existing extracted fields.
+		//
+		// Note that because this is used for bypassing extracted fields, and
+		// because parsed labels always take precedence over structured metadata
+		// and stream labels, we must only call RecordExtracted for parsed labels.
+		b.parserKeyHints.RecordExtracted(n)
+	}
 	return b
 }
 
 // Add the labels to the builder. If a label with the same name
 // already exists in the base labels, a suffix is added to the name.
-func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *LabelsBuilder {
-	for _, l := range labels {
+func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBuilder {
+	lbs.Range(func(l labels.Label) {
 		name := l.Name
 		if b.BaseHas(name) {
 			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
@@ -398,17 +408,33 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 
 		if name == logqlmodel.ErrorLabel {
 			b.err = l.Value
-			continue
+			return
 		}
 
 		if name == logqlmodel.ErrorDetailsLabel {
 			b.errDetails = l.Value
-			continue
+			return
 		}
 
 		b.Set(category, name, l.Value)
-	}
+	})
 	return b
+}
+
+// SetJSONPath sets the original JSON path parts that a label came from
+func (b *LabelsBuilder) SetJSONPath(labelName string, jsonPath []string) *LabelsBuilder {
+	b.jsonPaths[labelName] = jsonPath
+	return b
+}
+
+// GetJSONPath gets the original JSON path parts for a given label if available
+func (b *LabelsBuilder) GetJSONPath(labelName string) []string {
+	path, ok := b.jsonPaths[labelName]
+	if !ok {
+		return nil
+	}
+
+	return path
 }
 
 // Labels returns the labels from the builder. If no modifications
@@ -583,16 +609,37 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return b.currentResult
 	}
 
-	stream := b.labels(StreamLabel).Copy()
-	structuredMetadata := b.labels(StructuredMetadataLabel).Copy()
-	parsed := b.labels(ParsedLabel).Copy()
-	b.buf = flattenLabels(b.buf, stream, structuredMetadata, parsed)
+	// Get all labels at once and sort them
+	b.buf = b.UnsortedLabels(b.buf)
+	// sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	hash := b.hasher.Hash(b.buf)
+
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
-	result := NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
+	// Now segregate the sorted labels into their categories
+	var stream, meta, parsed []labels.Label
+
+	for _, l := range b.buf {
+		// Skip error labels for stream and meta categories
+		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+			parsed = append(parsed, l)
+			continue
+		}
+
+		// Check which category this label belongs to
+		if labelsContain(b.add[ParsedLabel], l.Name) {
+			parsed = append(parsed, l)
+		} else if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
+			meta = append(meta, l)
+		} else {
+			stream = append(stream, l)
+		}
+	}
+
+	result := NewLabelsResult(b.buf.String(), hash, labels.New(stream...), labels.New(meta...), labels.New(parsed...))
 	b.resultCache[hash] = result
 
 	return result
