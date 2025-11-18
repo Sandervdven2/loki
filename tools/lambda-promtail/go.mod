@@ -1,6 +1,6 @@
 module main
 
-go 1.24.8
+go 1.24.10
 
 require (
 	github.com/aws/aws-lambda-go v1.48.0
