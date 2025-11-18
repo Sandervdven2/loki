@@ -235,11 +235,11 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			fmt.Println(logLine)
 		}
 
-		var logStream string = "undefined"
+		var logStreamRegexResult string = "undefined"
 
-		typeMatch := parser.typeRegex.FindStringSubmatch(logLine)
-		if len(typeMatch) > 0 {
-			logStream = typeMatch[1]
+		logStreamtypeMatch := parser.typeRegex.FindStringSubmatch(logLine)
+		if len(logStreamtypeMatch) > 0 {
+			logStreamRegexResult = logStreamtypeMatch[1]
 			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
 
@@ -247,27 +247,29 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
 			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
 			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
-			model.LabelName("logStream"):                                        model.LabelValue(logStream),
+			model.LabelName("logStream"):                                        model.LabelValue(logStreamRegexResult),
 		}
+
+		fmt.Println(logStreamRegexResult)
 
 		ls = applyLabels(ls)
 
 		timestamp := time.Now()
-		match := parser.timestampRegex.FindStringSubmatch(logLine)
-		if len(match) > 0 {
+		tmeStampMatch := parser.timestampRegex.FindStringSubmatch(logLine)
+		if len(tmeStampMatch) > 0 {
 			if labels["lb_type"] == LB_NLB_TYPE {
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
-				match[1] += "Z"
+				tmeStampMatch[1] += "Z"
 			}
 
 			switch parser.timestampType {
 			case "string":
-				timestamp, err = time.Parse(parser.timestampFormat, match[1])
+				timestamp, err = time.Parse(parser.timestampFormat, tmeStampMatch[1])
 				if err != nil {
 					return err
 				}
 			case "unix":
-				sec, nsec, err := getUnixSecNsec(match[1])
+				sec, nsec, err := getUnixSecNsec(tmeStampMatch[1])
 				if err != nil {
 					return err
 				}

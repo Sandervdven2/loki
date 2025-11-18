@@ -820,7 +820,7 @@ func Test_parseS3PegaLog(t *testing.T) {
 			name: "pegalogs",
 			args: args{
 				batchSize: 131072, // Set large enough we don't try and send to promtail
-				filename:  "../testdata/pega.log",
+				filename:  "../testdata/pega.log.gz",
 				b: &batch{
 					streams: map[string]*logproto.Stream{},
 				},
