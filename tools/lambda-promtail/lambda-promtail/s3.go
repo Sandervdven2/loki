@@ -38,6 +38,8 @@ type parserConfig struct {
 	// regex that extracts the stream of logline from the log sample
 	streamRegex *regexp.Regexp
 	// regex that extracts the stream of logline from the log sample
+	podNameRegex *regexp.Regexp
+	// regex that extracts the pod name of logline from the log sample
 	podRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
@@ -101,6 +103,8 @@ var (
 	guarddutyFilenameRegex   = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>GuardDuty)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/.+`)
 	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
 	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"|"stream":"([^"]+)"`)
+	pegastreamTypeRegex      = regexp.MustCompile(`"stream":"([^"]+)"`)
+	pegapodNameRegex         = regexp.MustCompile(`"pod_name":"([^"]+)"`)
 
 	parsers = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
@@ -149,6 +153,8 @@ var (
 			timestampRegex: pegaTimestampRegex,
 			timestampType:  "unix",
 			typeRegex:      pegaLogstreamTypeRegex,
+			streamRegex:    pegastreamTypeRegex,
+			podNameRegex:   pegapodNameRegex,
 		},
 		GUARDDUTY_LOG_TYPE: {
 			logTypeLabel:    "s3_guardduty",
@@ -247,13 +253,25 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
 
+		var streamRegexResult string = "undefined"
+
+		streamtypeMatch := parser.streamRegex.FindStringSubmatch(logLine)
+		if len(streamtypeMatch) > 0 {
+			streamRegexResult = streamtypeMatch[1]
+			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
+		}
+
+		var podNameResult string = "undefined"
+		podNameMatch := parser.podNameRegex.FindStringSubmatch(logLine)
+		if len(podNameMatch) > 0 {
+			podNameResult = podNameMatch[1]
+			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
+		}
+
 		labelset := model.LabelSet{
-			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
-			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
-			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
-			model.LabelName("logStream"):                                        model.LabelValue(logStreamRegexResult),
-			model.LabelName("stream"):                                           model.LabelValue("dummy"),
-			model.LabelName("streamABC"):                                        model.LabelValue("dummyABC"),
+			model.LabelName("logStream"): model.LabelValue(logStreamRegexResult),
+			model.LabelName("stream"):    model.LabelValue(streamRegexResult),
+			model.LabelName("streamABC"): model.LabelValue(podNameResult),
 		}
 		//labelset[model.LabelName("stream")] = model.LabelValue(labels["stream"])
 
