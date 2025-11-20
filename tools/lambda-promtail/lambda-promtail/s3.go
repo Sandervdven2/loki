@@ -271,7 +271,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		labelset := model.LabelSet{
 			model.LabelName("logStream"): model.LabelValue(logStreamRegexResult),
 			model.LabelName("stream"):    model.LabelValue(streamRegexResult),
-			model.LabelName("streamABC"): model.LabelValue(podNameResult),
+			model.LabelName("pod_name"):  model.LabelValue(podNameResult),
 		}
 		//labelset[model.LabelName("stream")] = model.LabelValue(labels["stream"])
 
