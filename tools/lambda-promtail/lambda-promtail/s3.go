@@ -35,6 +35,10 @@ type parserConfig struct {
 	timestampRegex *regexp.Regexp
 	// regex that extracts the type of logline from the log sample
 	typeRegex *regexp.Regexp
+	// regex that extracts the stream of logline from the log sample
+	streamRegex *regexp.Regexp
+	// regex that extracts the stream of logline from the log sample
+	podRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
 	// if the timestamp is a string that can be parsed or a Unix timestamp
@@ -243,16 +247,17 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
 
-		ls := model.LabelSet{
+		labelset := model.LabelSet{
 			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
 			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
 			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
 			model.LabelName("logStream"):                                        model.LabelValue(logStreamRegexResult),
+			model.LabelName("stream"):                                           model.LabelValue("dummy"),
+			model.LabelName("streamABC"):                                        model.LabelValue("dummyABC"),
 		}
+		//labelset[model.LabelName("stream")] = model.LabelValue(labels["stream"])
 
-		fmt.Println(logStreamRegexResult)
-
-		ls = applyLabels(ls)
+		labelset = applyLabels(labelset)
 
 		timestamp := time.Now()
 		tmeStampMatch := parser.timestampRegex.FindStringSubmatch(logLine)
@@ -279,7 +284,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			}
 		}
 
-		if err := b.add(ctx, entry{ls, logproto.Entry{
+		if err := b.add(ctx, entry{labelset, logproto.Entry{
 			Line:      logLine,
 			Timestamp: timestamp,
 		}}); err != nil {
