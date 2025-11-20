@@ -35,6 +35,12 @@ type parserConfig struct {
 	timestampRegex *regexp.Regexp
 	// regex that extracts the type of logline from the log sample
 	typeRegex *regexp.Regexp
+	// regex that extracts the stream of logline from the log sample
+	streamRegex *regexp.Regexp
+	// regex that extracts the stream of logline from the log sample
+	podNameRegex *regexp.Regexp
+	// regex that extracts the pod name of logline from the log sample
+	podRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
 	// if the timestamp is a string that can be parsed or a Unix timestamp
@@ -97,6 +103,8 @@ var (
 	guarddutyFilenameRegex   = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>GuardDuty)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/.+`)
 	pegaTimestampRegex       = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+)`)
 	pegaLogstreamTypeRegex   = regexp.MustCompile(`"logStream":"([^"]+)"|"stream":"([^"]+)"`)
+	pegastreamTypeRegex      = regexp.MustCompile(`"stream":"([^"]+)"`)
+	pegapodNameRegex         = regexp.MustCompile(`"pod_name":"([^"]+)"`)
 
 	parsers = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
@@ -145,6 +153,8 @@ var (
 			timestampRegex: pegaTimestampRegex,
 			timestampType:  "unix",
 			typeRegex:      pegaLogstreamTypeRegex,
+			streamRegex:    pegastreamTypeRegex,
+			podNameRegex:   pegapodNameRegex,
 		},
 		GUARDDUTY_LOG_TYPE: {
 			logTypeLabel:    "s3_guardduty",
@@ -235,39 +245,54 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			fmt.Println(logLine)
 		}
 
-		var logStream string = "undefined"
+		var logStreamRegexResult string = "undefined"
 
-		typeMatch := parser.typeRegex.FindStringSubmatch(logLine)
-		if len(typeMatch) > 0 {
-			logStream = typeMatch[1]
+		logStreamtypeMatch := parser.typeRegex.FindStringSubmatch(logLine)
+		if len(logStreamtypeMatch) > 0 {
+			logStreamRegexResult = logStreamtypeMatch[1]
 			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
 
-		ls := model.LabelSet{
-			model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
-			model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
-			model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
-			model.LabelName("logStream"):                                        model.LabelValue(logStream),
+		var streamRegexResult string = "undefined"
+
+		streamtypeMatch := parser.streamRegex.FindStringSubmatch(logLine)
+		if len(streamtypeMatch) > 0 {
+			streamRegexResult = streamtypeMatch[1]
+			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
 		}
 
-		ls = applyLabels(ls)
+		var podNameResult string = "undefined"
+		podNameMatch := parser.podNameRegex.FindStringSubmatch(logLine)
+		if len(podNameMatch) > 0 {
+			podNameResult = podNameMatch[1]
+			//level.Warn(*log).Log("msg", fmt.Sprintf("logStream type of %s,", logStream))
+		}
+
+		labelset := model.LabelSet{
+			model.LabelName("logStream"): model.LabelValue(logStreamRegexResult),
+			model.LabelName("stream"):    model.LabelValue(streamRegexResult),
+			model.LabelName("pod_name"):  model.LabelValue(podNameResult),
+		}
+		//labelset[model.LabelName("stream")] = model.LabelValue(labels["stream"])
+
+		labelset = applyLabels(labelset)
 
 		timestamp := time.Now()
-		match := parser.timestampRegex.FindStringSubmatch(logLine)
-		if len(match) > 0 {
+		tmeStampMatch := parser.timestampRegex.FindStringSubmatch(logLine)
+		if len(tmeStampMatch) > 0 {
 			if labels["lb_type"] == LB_NLB_TYPE {
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
-				match[1] += "Z"
+				tmeStampMatch[1] += "Z"
 			}
 
 			switch parser.timestampType {
 			case "string":
-				timestamp, err = time.Parse(parser.timestampFormat, match[1])
+				timestamp, err = time.Parse(parser.timestampFormat, tmeStampMatch[1])
 				if err != nil {
 					return err
 				}
 			case "unix":
-				sec, nsec, err := getUnixSecNsec(match[1])
+				sec, nsec, err := getUnixSecNsec(tmeStampMatch[1])
 				if err != nil {
 					return err
 				}
@@ -277,7 +302,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			}
 		}
 
-		if err := b.add(ctx, entry{ls, logproto.Entry{
+		if err := b.add(ctx, entry{labelset, logproto.Entry{
 			Line:      logLine,
 			Timestamp: timestamp,
 		}}); err != nil {
